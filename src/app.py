@@ -36,7 +36,7 @@ if st.button("Obtener Tweets"):
     try:
         # Fetch tweets mentioning the politician
         with st.spinner("Buscando tweets que mencionan al político..."):
-            query = f"@{username} OR {username} -is:retweet lang:es"
+            query = f"(@{username} OR {username}) -from:{username} -is:retweet lang:es"
             tweets = client_x.search_recent_tweets(
                 query=query,
                 max_results=limit,
