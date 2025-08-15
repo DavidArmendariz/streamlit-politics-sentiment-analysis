@@ -20,31 +20,31 @@ client_ai = OpenAI(api_key=OPENAI_API_KEY)
 client_x = tweepy.Client(bearer_token=X_BEARER_TOKEN)
 
 # Streamlit UI
-st.set_page_config(page_title="Rastreador de Sentimientos de Políticos", layout="wide")
-st.title("🗳️ Dashboard de Sentimientos de Políticos en Tiempo Real")
+st.set_page_config(page_title="Análisis de Sentimientos sobre Políticos", layout="wide")
+st.title("🗳️ Dashboard de Sentimientos sobre Políticos en Tiempo Real")
 
 username = st.text_input(
     "Ingresa el usuario de Twitter del político (sin @)", "luisgabrielgom"
 )
-limit = st.slider("Número de tweets recientes", 5, 50, 10)
+limit = st.slider("Número de tweets recientes para analizar", 10, 50, 10)
+
+st.info(
+    "💡 Esta herramienta analiza el sentimiento de tweets que **mencionan** al político, no los tweets del político mismo."
+)
 
 if st.button("Obtener Tweets"):
     try:
-        # Get user ID
-        with st.spinner("Buscando usuario..."):
-            user = client_x.get_user(username=username)
-            user_id = user.data.id
-
-        # Fetch tweets
-        with st.spinner("Obteniendo tweets..."):
-            tweets = client_x.get_users_tweets(
-                id=user_id,
+        # Fetch tweets mentioning the politician
+        with st.spinner("Buscando tweets que mencionan al político..."):
+            query = f"@{username} OR {username} -is:retweet lang:es"
+            tweets = client_x.search_recent_tweets(
+                query=query,
                 max_results=limit,
-                tweet_fields=["created_at", "text", "lang"],
+                tweet_fields=["created_at", "text", "lang", "author_id"],
             )
 
-        if not tweets.data:
-            st.warning("No se encontraron tweets.")
+        if not tweets or not tweets.data:
+            st.warning("No se encontraron tweets que mencionen al político.")
         else:
             data = []
             total_tweets = len(tweets.data)
@@ -59,19 +59,23 @@ if st.button("Obtener Tweets"):
 
                 # Call OpenAI for sentiment with error handling
                 try:
-                    prompt = f"Clasifica el sentimiento del siguiente tweet como Positivo, Negativo o Neutral:\n\n{text}"
+                    prompt = f"Analiza el sentimiento de este tweet sobre el político {username}. Clasifica como Positivo, Negativo o Neutral:\n\n{text}"
                     response = client_ai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {
                                 "role": "system",
-                                "content": "Eres un asistente de análisis de sentimientos.",
+                                "content": "Eres un asistente experto en análisis de sentimientos políticos. Analiza el sentimiento expresado hacia políticos en tweets.",
                             },
                             {"role": "user", "content": prompt},
                         ],
                         temperature=0,
                     )
-                    sentiment = response.choices[0].message.content.strip()
+                    sentiment = response.choices[0].message.content
+                    if sentiment:
+                        sentiment = sentiment.strip()
+                    else:
+                        sentiment = "Sin analizar"
 
                     # Add a small delay to avoid hitting OpenAI rate limits
                     time.sleep(0.1)
