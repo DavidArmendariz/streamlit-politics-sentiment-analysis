@@ -103,10 +103,6 @@ if st.button("Obtener Tweets"):
             df = pd.DataFrame(data)
             st.dataframe(df, use_container_width=True)
 
-            # Sentiment counts
-            sentiment_counts = df["Sentimiento"].value_counts()
-            st.bar_chart(sentiment_counts)
-
     except tweepy.TooManyRequests:
         st.error(
             "🚫 **Error de límite de X (Twitter)**: Has alcanzado el límite de solicitudes de la API de X. Espera unos minutos antes de intentar de nuevo."
