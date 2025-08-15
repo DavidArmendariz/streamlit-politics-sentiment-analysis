@@ -21,7 +21,7 @@ client_x = tweepy.Client(bearer_token=X_BEARER_TOKEN)
 
 # Streamlit UI
 st.set_page_config(page_title="Análisis de Sentimientos sobre Políticos", layout="wide")
-st.title("🗳️ Dashboard de Sentimientos sobre Políticos en Tiempo Real")
+st.title("🗳️ Dashboard de Sentimientos sobre Políticos")
 
 username = st.text_input(
     "Ingresa el usuario de Twitter del político (sin @)", "luisgabrielgom"
@@ -29,7 +29,7 @@ username = st.text_input(
 limit = st.slider("Número de tweets recientes para analizar", 10, 50, 10)
 
 st.info(
-    "💡 Esta herramienta analiza el sentimiento de tweets que **mencionan** al político, no los tweets del político mismo."
+    "💡 Esta herramienta analiza el sentimiento de tweets que **mencionan** al político."
 )
 
 if st.button("Obtener Tweets"):
@@ -59,23 +59,50 @@ if st.button("Obtener Tweets"):
 
                 # Call OpenAI for sentiment with error handling
                 try:
-                    prompt = f"Analiza el sentimiento de este tweet sobre el político {username}. Clasifica como Positivo, Negativo o Neutral:\n\n{text}"
+                    prompt = f"""Analiza el sentimiento de este tweet sobre el político {username}.
+
+Tweet: {text}
+
+Responde en el siguiente formato JSON:
+{{
+    "clasificacion": "positivo" | "neutro" | "negativo",
+    "analisis": "Explicación breve del por qué clasificaste así este sentimiento"
+}}
+
+Usa exactamente las palabras "positivo", "neutro" o "negativo" para la clasificación."""
+
                     response = client_ai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {
                                 "role": "system",
-                                "content": "Eres un asistente experto en análisis de sentimientos políticos. Analiza el sentimiento expresado hacia políticos en tweets.",
+                                "content": "Eres un asistente experto en análisis de sentimientos políticos. Siempre responde en formato JSON válido con 'clasificacion' y 'analisis'.",
                             },
                             {"role": "user", "content": prompt},
                         ],
                         temperature=0,
                     )
-                    sentiment = response.choices[0].message.content
-                    if sentiment:
-                        sentiment = sentiment.strip()
+
+                    import json
+
+                    response_text = response.choices[0].message.content
+                    if response_text:
+                        try:
+                            result = json.loads(response_text.strip())
+                            sentiment_class = result.get(
+                                "clasificacion", "sin analizar"
+                            ).lower()
+                            sentiment_analysis = result.get("analisis", "No disponible")
+                        except json.JSONDecodeError:
+                            sentiment_class = "sin analizar"
+                            sentiment_analysis = (
+                                response_text.strip()
+                                if response_text
+                                else "Error en análisis"
+                            )
                     else:
-                        sentiment = "Sin analizar"
+                        sentiment_class = "sin analizar"
+                        sentiment_analysis = "No disponible"
 
                     # Add a small delay to avoid hitting OpenAI rate limits
                     time.sleep(0.1)
@@ -84,7 +111,8 @@ if st.button("Obtener Tweets"):
                     st.warning(
                         f"Error analizando sentimiento del tweet {i + 1} (OpenAI): {openai_error}"
                     )
-                    sentiment = "Sin analizar"
+                    sentiment_class = "sin analizar"
+                    sentiment_analysis = "Error en análisis"
 
                 data.append(
                     {
@@ -92,7 +120,8 @@ if st.button("Obtener Tweets"):
                             "%Y-%m-%d %H:%M:%S"
                         ),
                         "Tweet": text,
-                        "Sentimiento": sentiment,
+                        "Clasificación": sentiment_class,
+                        "Análisis": sentiment_analysis,
                     }
                 )
 
@@ -102,6 +131,33 @@ if st.button("Obtener Tweets"):
 
             df = pd.DataFrame(data)
             st.dataframe(df, use_container_width=True)
+
+            # Sentiment counts and visualization
+            st.subheader("📊 Distribución de Sentimientos")
+            sentiment_counts = df["Clasificación"].value_counts()
+
+            # Create columns for metrics
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                positivo_count = sentiment_counts.get("positivo", 0)
+                st.metric("✅ Positivos", positivo_count)
+
+            with col2:
+                neutro_count = sentiment_counts.get("neutro", 0)
+                st.metric("⚖️ Neutros", neutro_count)
+
+            with col3:
+                negativo_count = sentiment_counts.get("negativo", 0)
+                st.metric("❌ Negativos", negativo_count)
+
+            with col4:
+                total_analyzed = len(df[df["Clasificación"] != "sin analizar"])
+                st.metric("📈 Total Analizados", total_analyzed)
+
+            # Bar chart
+            if not sentiment_counts.empty:
+                st.bar_chart(sentiment_counts)
 
     except tweepy.TooManyRequests:
         st.error(
